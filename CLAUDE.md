@@ -14,11 +14,13 @@ Same conventions as the Health Company Platform: TypeScript on Node 22.18+ (nati
 - Access is per area (module): none, view, edit, approve. Owners have full access; client-level people never get margins, team or branding access.
 - An active agency always keeps an active owner. Ended agencies stay ended; suspending or ending needs a reason.
 - Every change is in the append-only audit log with its actor (`app.actor`).
+- People sign in individually with password + authenticator code; lockout (5 tries, 15 minutes), 30-minute idle and 12-hour session limits, code replay and workspace checks are enforced in the database (002). Sign-in state stays in `person_sign_in`, which members can't read; password hashes never reach the audit log. A session works in one agency workspace at a time, and a deactivated membership or suspended agency stops working at once.
+- No secrets (authenticator keys, OAuth tokens, agency API keys) in the database or repo: the secret store holds them and the database keeps a reference.
 - Ordix never manages client accounts; agencies are responsible for client authorizations, ad spend and site changes.
 
 ## Phase 1 plan
 1. Core: agencies, clients, people, access levels, audit log, isolation (done)
-2. Sign-in: password + authenticator code, sessions, lockout (port from the health platform's 014)
+2. Sign-in: password + authenticator code, sessions, lockout, workspace choice (done)
 3. Web server and agency/client screens (from the clickable prototype)
 4. Connected-accounts screen (OAuth for Google and Meta, tokens in the secret store, bring-your-own-keys per agency)
 5. Billing for agencies through Stripe

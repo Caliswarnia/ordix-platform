@@ -7,6 +7,6 @@
   "engines": { "node": ">=22.18" },
   "scripts": {
     "test": "node --test test/*.test.ts",
-    "db:init": "psql -v ON_ERROR_STOP=1 -f db/001_core.sql"
+    "db:init": "psql -v ON_ERROR_STOP=1 -f db/001_core.sql -f db/002_sign_in.sql"
   }
 }
