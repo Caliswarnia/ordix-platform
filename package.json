@@ -4,9 +4,13 @@
   "description": "Ordix: white-label marketing platform for agencies",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.18" },
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "test": "node --test test/*.test.ts",
-    "db:init": "psql -v ON_ERROR_STOP=1 -f db/001_core.sql -f db/002_sign_in.sql"
+    "db:init": "psql -v ON_ERROR_STOP=1 -f db/001_core.sql -f db/002_sign_in.sql",
+    "start": "bash start.sh",
+    "admin": "node src/admin.ts"
   }
 }
