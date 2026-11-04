@@ -21,14 +21,15 @@ Same conventions as the Health Company Platform: TypeScript on Node 22.18+ (nati
 - The API (`src/api.ts`) runs every request as the signed-in member through `asMember`; app-level checks give friendly messages but never replace the database's rules.
 - Temporary passwords are issued only for people new to Ordix: an agency can never set a password for someone who already has a login or belongs to another agency.
 - The browser app has no inline scripts or styles (Content-Security-Policy); white-label colors are set through the DOM.
-- Connected accounts (003): only 'accounts' edit can connect or disconnect, for clients the member can reach (client admins can connect their own). Google scopes are read-only. OAuth states are single-use, expire in 10 minutes and must be finished by the same signed-in person. Tokens live only in the secret store; disconnecting deletes the token, revokes it with Google and removes synced properties, and a disconnected connection stays disconnected. Members never read token or app-secret references, and they never reach the audit log.
-- Agencies may bring their own Google app (owner only); the secret goes to the secret store.
+- Connected accounts (003): only 'accounts' edit can connect or disconnect, for clients the member can reach (client admins can connect their own). Google scopes are read-only; Meta asks only for ads_read and page listing (never ads_management). OAuth states are single-use, expire in 10 minutes and must be finished by the same signed-in person. Tokens live only in the secret store; disconnecting deletes the token, revokes it with the provider and removes synced properties, and a disconnected connection stays disconnected. Members never read token or app-secret references, and they never reach the audit log.
+- Meta has no refresh token: the long-lived token (about 60 days) is stored with its expiry (004); the app warns inside 7 days and marks the connection needs_reconnect once it lapses. A state started for one provider can't be finished on another's return address.
+- Agencies may bring their own Google or Meta app (owner only); the secret goes to the secret store.
 - Ordix never manages client accounts; agencies are responsible for client authorizations, ad spend and site changes.
 
 ## Phase 1 plan
 1. Core: agencies, clients, people, access levels, audit log, isolation (done)
 2. Sign-in: password + authenticator code, sessions, lockout, workspace choice (done)
 3. Web server and screens: sign-in, workspaces, overview, clients, team and access, branding, activity log (done)
-4. Connected accounts: Google (Search Console, Analytics) with the SEO dashboard (done); Meta next
-   Config: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, PUBLIC_URL (https://app.ordixit.com); redirect /oauth/google/callback
+4. Connected accounts: Google (Search Console, Analytics) with the SEO dashboard, Meta (ad accounts, pages) with the Paid media dashboard (done)
+   Config: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, META_APP_ID, META_APP_SECRET, META_API_VERSION (default v25.0), PUBLIC_URL (https://app.ordixit.com); redirects /oauth/google/callback and /oauth/meta/callback
 5. Billing for agencies through Stripe

@@ -12,11 +12,12 @@
 //   POST /api/agency/branding             { name, brandColor, portalDomain }            branding: edit
 //   GET  /api/activity                    recent changes                                team: view
 //   GET  /api/clients/:id/connections     connected accounts for a client               accounts: view
-//   POST /api/clients/:id/connections/google   -> { url } to send the browser to Google   accounts: edit
+//   POST /api/clients/:id/connections/:provider  google|meta -> { url } to send the browser to  accounts: edit
 //   POST /api/connections/:id/disconnect                                                accounts: edit
 //   POST /api/properties/:id/select       which site/property feeds the dashboards      accounts: edit
 //   GET  /api/clients/:id/seo             Search Console and Analytics numbers          seo: view
-//   GET  /api/agency/oauth-app            whether the agency uses its own Google app    team: view
+//   GET  /api/clients/:id/ads             Meta ad spend and results                     ads: view
+//   GET  /api/agency/oauth-app            whether the agency uses its own Google/Meta app   team: view
 //   POST /api/agency/oauth-app            { provider, clientId, clientSecret }           owner only
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { query, asMember, type DbConfig } from './db.ts';
@@ -164,8 +165,10 @@ export function createApi(o: { db: DbConfig; connections: Connections }) {
     if (parts[1] === 'clients' && UUID.test(parts[2] ?? '')) {
       const clientId = parts[2];
       if (method === 'GET' && parts[3] === 'connections' && parts.length === 4) { need(m, 'accounts', 'view'); return o.connections.list(m, clientId); }
-      if (method === 'POST' && parts[3] === 'connections' && parts[4] === 'google' && parts.length === 5) return { url: o.connections.startGoogle(m, clientId) };
+      if (method === 'POST' && parts[3] === 'connections' && (parts[4] === 'google' || parts[4] === 'meta') && parts.length === 5)
+        return { url: o.connections.start(m, clientId, parts[4]) };
       if (method === 'GET' && parts[3] === 'seo' && parts.length === 4) return o.connections.seo(m, clientId);
+      if (method === 'GET' && parts[3] === 'ads' && parts.length === 4) return o.connections.ads(m, clientId);
     }
     if (method === 'POST' && parts[1] === 'connections' && UUID.test(parts[2] ?? '') && parts[3] === 'disconnect' && parts.length === 4) {
       await o.connections.disconnect(m, parts[2]); return { ok: true };

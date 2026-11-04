@@ -130,7 +130,8 @@
       if (back.get('connected') && back.get('client')) {
         route = { page: 'client', client: back.get('client'), tab: 'accounts' };
         history.replaceState(null, '', '/');
-        setTimeout(function () { toast('Google connected. Choose the site and property for this client\u2019s dashboards.'); }, 200);
+        var who = back.get('connected') === 'meta' ? 'Meta connected. Choose the ad account for this client\u2019s dashboards.' : 'Google connected. Choose the site and property for this client\u2019s dashboards.';
+        setTimeout(function () { toast(who); }, 200);
       }
       render();
     });
@@ -230,7 +231,7 @@
     var bodies = {
       seo: ['Search rankings and traffic', 'Connect Google Search Console and Google Analytics to see clicks, rankings and leads.'],
       site: ['Site audit and fix queue', 'The crawler runs once the site is connected' + (c.cms === 'other' ? '. On this platform fixes are sent as tasks.' : ' (' + cmsLabel(c.cms) + ' connector).')],
-      ads: ['Ad spend and pacing', 'Connect Google Ads, Meta or other ad accounts to track spend, budgets and return.'],
+      ads: ['Ad spend and results', 'Connect Meta to track spend, leads and return.'],
       social: ['Content calendar', 'Connect Facebook, Instagram or Google Business Profile to plan and approve posts.'],
       reports: ['Monthly reports', 'Reports build from connected data and carry ' + S.agency.name + '’s brand.'],
       accounts: ['Connected accounts', 'Connecting Google, Meta and the website is the next build step. The client signs in to each service directly; no passwords are shared.']
@@ -238,7 +239,7 @@
     var b = bodies[route.tab] || ['', ''];
     return '<div class="page-head"><div><h1>' + esc(c.name) + '</h1><p class="mono">' + esc(c.domain || 'No website set') + ' · ' + esc(cmsLabel(c.cms)) + '</p></div></div>' +
       (tabs.length ? '<div class="tabs" role="tablist">' + tabs.map(function (t) { return '<button class="tab" role="tab" data-tab="' + t[0] + '" aria-selected="' + (route.tab === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div>' +
-        (route.tab === 'seo' || route.tab === 'accounts' ? '<div id="panel"><div class="card"><div class="empty"><span>Loading\u2026</span></div></div></div>'
+        (route.tab === 'seo' || route.tab === 'accounts' || route.tab === 'ads' ? '<div id="panel"><div class="card"><div class="empty"><span>Loading\u2026</span></div></div></div>'
           : '<div class="card"><div class="empty"><b>' + esc(b[0]) + '</b><span>' + esc(b[1]) + '</span><span class="pill p-warn">Waiting for connected accounts</span></div></div>')
         : '<div class="card"><div class="empty"><b>No areas available</b><span>Ask your agency for access.</span></div></div>');
   }
@@ -246,12 +247,13 @@
     root.querySelectorAll('[data-tab]').forEach(function (b) { b.addEventListener('click', function () { route.tab = b.dataset.tab; render(); }); });
     if (route.tab === 'accounts') loadAccounts();
     if (route.tab === 'seo') loadSeo();
+    if (route.tab === 'ads') loadAds();
   }
 
   // Connected accounts tab
   var KIND = { search_console_site: 'Search Console site', ga4_property: 'Analytics property', meta_ad_account: 'Meta ad account', meta_page: 'Facebook page' };
-  function connectGoogle() {
-    api('POST', '/api/clients/' + route.client + '/connections/google', {}).then(function (r) {
+  function connect(provider) {
+    api('POST', '/api/clients/' + route.client + '/connections/' + provider, {}).then(function (r) {
       if (r.status !== 200) return toast(r.data.error);
       location.assign(r.data.url);
     });
@@ -262,25 +264,29 @@
       if (!$('panel') || route.client !== clientId) return;
       var edit = can('accounts', 'edit');
       var list = r.status === 200 ? r.data : [];
-      var head = '<div class="notice"><b>Connect this client\u2019s accounts</b><span class="muted">The account owner signs in to Google directly; no passwords are shared. Ordix only reads data (it never changes anything in Google).</span>' +
-        (edit ? '<div><button class="btn btn-p" id="cg">Connect Google</button></div>' : '<span class="muted small">Ask someone with edit access to Connected accounts to connect them.</span>') + '</div>';
+      var head = '<div class="notice"><b>Connect this client\u2019s accounts</b><span class="muted">The account owner signs in to Google or Meta directly; no passwords are shared. Ordix only reads data and never changes anything in those accounts.</span>' +
+        (edit ? '<div class="row"><button class="btn btn-p" data-connect="google">Connect Google</button><button class="btn btn-p" data-connect="meta">Connect Meta (Facebook, Instagram)</button></div>' : '<span class="muted small">Ask someone with edit access to Connected accounts to connect them.</span>') + '</div>';
       var cards = list.map(function (c) {
-        var st = c.status === 'connected' ? '<span class="pill p-good">Connected</span>' : '<span class="pill p-warn">Sign-in expired</span>';
+        var daysLeft = c.expiresAt ? Math.floor((Date.parse(c.expiresAt) - Date.now()) / 864e5) : null;
+        var st = c.status !== 'connected' ? '<span class="pill p-warn">Sign-in expired</span>'
+          : daysLeft !== null && daysLeft < 7 ? '<span class="pill p-warn">Expires in ' + Math.max(daysLeft, 0) + (daysLeft === 1 ? ' day' : ' days') + '</span>' : '<span class="pill p-good">Connected</span>';
         var groups = {};
         c.properties.forEach(function (p) { (groups[p.kind] = groups[p.kind] || []).push(p); });
         var props = Object.keys(groups).map(function (k) {
           return '<div class="field"><span class="small"><b>' + esc(KIND[k] || k) + '</b> <span class="muted">(feeds the dashboards)</span></span>' + groups[k].map(function (p) {
             return '<label class="row small"><input type="radio" name="' + esc(c.id + k) + '" data-prop="' + esc(p.id) + '"' + (p.selected ? ' checked' : '') + (edit ? '' : ' disabled') + '> ' + esc(p.label) + '</label>';
           }).join('') + '</div>';
-        }).join('') || '<p class="muted small">This Google account has no Search Console sites or Analytics properties. Connect the account that manages them.</p>';
-        return '<div class="card"><div class="card-h"><h3>Google' + (c.account ? ' \u00b7 ' + esc(c.account) : '') + '</h3><div class="row">' + st +
-          (edit && c.status !== 'connected' ? '<button class="btn btn-s btn-p" data-reconnect>Reconnect</button>' : '') +
+        }).join('') || (c.provider === 'meta' ? '<p class="muted small">This Meta account has no ad accounts or pages. Connect the account that manages them.</p>'
+          : '<p class="muted small">This Google account has no Search Console sites or Analytics properties. Connect the account that manages them.</p>');
+        var reconnect = edit && (c.status !== 'connected' || (daysLeft !== null && daysLeft < 7));
+        return '<div class="card"><div class="card-h"><h3>' + (c.provider === 'meta' ? 'Meta' : 'Google') + (c.account ? ' \u00b7 ' + esc(c.account) : '') + '</h3><div class="row">' + st +
+          (reconnect ? '<button class="btn btn-s btn-p" data-connect="' + esc(c.provider) + '">Reconnect</button>' : '') +
           (edit ? '<button class="btn btn-s" data-disc="' + esc(c.id) + '">Disconnect</button>' : '') + '</div></div><div class="card-b">' + props +
-          '<p class="muted small">Connected by ' + esc(c.connectedBy) + ' \u00b7 ' + esc(when(c.connectedAt)) + (c.agencyApp ? ' \u00b7 using your agency\u2019s own Google app' : '') + '</p></div></div>';
+          '<p class="muted small">Connected by ' + esc(c.connectedBy) + ' \u00b7 ' + esc(when(c.connectedAt)) + (c.agencyApp ? ' \u00b7 using your agency\u2019s own app' : '') +
+          (c.expiresAt ? ' \u00b7 Meta asks for a fresh sign-in every 60 days; this one lasts until ' + esc(new Date(c.expiresAt).toLocaleDateString([], { month: 'short', day: 'numeric' })) : '') + '</p></div></div>';
       }).join('');
       $('panel').innerHTML = head + cards;
-      if ($('cg')) $('cg').addEventListener('click', connectGoogle);
-      root.querySelectorAll('[data-reconnect]').forEach(function (b) { b.addEventListener('click', connectGoogle); });
+      root.querySelectorAll('[data-connect]').forEach(function (b) { b.addEventListener('click', function () { connect(b.dataset.connect); }); });
       root.querySelectorAll('[data-prop]').forEach(function (i) {
         i.addEventListener('change', function () { api('POST', '/api/properties/' + i.dataset.prop + '/select', {}).then(function (r) { toast(r.status === 200 ? 'Dashboards will use this one' : r.data.error); }); });
       });
@@ -326,20 +332,53 @@
       wireChart();
     });
   }
+  function money(n, cur) {
+    try { return new Intl.NumberFormat([], { style: 'currency', currency: cur || 'USD', maximumFractionDigits: 0 }).format(n); } catch (e) { return '$' + num(n); }
+  }
+  function loadAds() {
+    var clientId = route.client;
+    api('GET', '/api/clients/' + clientId + '/ads').then(function (r) {
+      if (!$('panel') || route.client !== clientId) return;
+      var d = r.data || {};
+      if (r.status !== 200) { $('panel').innerHTML = '<div class="card"><div class="empty"><b>' + esc(d.error) + '</b></div></div>'; return; }
+      if (!d.connected) {
+        $('panel').innerHTML = '<div class="card"><div class="empty"><b>Ad spend and results</b><span>Connect the client\u2019s Meta account to see spend, leads and return on ad spend. Google Ads comes later.</span>' +
+          (can('accounts', 'view') ? '<button class="btn btn-p" data-tab-go="accounts">Go to Connected accounts</button>' : '') + '</div></div>';
+        var g = root.querySelector('[data-tab-go]'); if (g) g.addEventListener('click', function () { route.tab = 'accounts'; render(); });
+        return;
+      }
+      if (d.error) { $('panel').innerHTML = '<div class="card"><div class="empty"><b>' + esc(d.error) + '</b>' + (d.reconnect ? '<span>Reconnect the Meta account in Connected accounts.</span>' : '') + '</div></div>'; return; }
+      var t = d.totals, cur = d.currency;
+      var ch = t.spendPrev ? Math.round((t.spend - t.spendPrev) / t.spendPrev * 100) : null;
+      var html = '<div class="tiles">' +
+        '<div class="card tile"><span class="k">Meta ad spend, last 28 days</span><span class="v">' + money(t.spend, cur) + '</span><span class="small muted">' +
+          (ch === null ? 'No earlier period yet' : (ch >= 0 ? '\u25b2 ' : '\u25bc ') + Math.abs(ch) + '% vs prior 28 days') + '</span></div>' +
+        '<div class="card tile"><span class="k">Leads</span><span class="v">' + num(t.leads) + '</span><span class="small muted">' + (t.leads ? money(t.spend / t.leads, cur) + ' per lead' : 'No lead events recorded') + '</span></div>' +
+        '<div class="card tile"><span class="k">Clicks</span><span class="v">' + num(t.clicks) + '</span><span class="small muted">' + (t.impressions ? (t.clicks / t.impressions * 100).toFixed(2) + '% of ' + num(t.impressions) + ' views' : '') + '</span></div>' +
+        '<div class="card tile"><span class="k">Return on ad spend</span><span class="v">' + (t.roas ? t.roas.toFixed(1) + '\u00d7' : '\u2014') + '</span><span class="small muted">' + (t.roas ? money(t.purchaseValue, cur) + ' in tracked purchases' : 'Needs purchase tracking on the site') + '</span></div></div>';
+      if (d.weeks && d.weeks.length > 1) html += '<div class="card"><div class="card-h"><h3>Meta ad spend by week</h3><span class="muted small">' + esc(d.account) + '</span></div><div class="card-b">' +
+        lineChart(d.weeks.map(function (w) { return { weekEnding: w.weekEnding, clicks: w.spend }; }), { unit: 'spend', fmt: function (v) { return money(v, cur); } }) + '</div></div>';
+      if (d.campaigns && d.campaigns.length) html += table('Campaigns, last 28 days', ['Campaign', 'Spend', 'Clicks', 'Leads'], d.campaigns.map(function (c) { return [esc(c.name), money(c.spend, cur), num(c.clicks), num(c.leads)]; }));
+      html += '<p class="muted small">Read-only from Meta. Budget changes and approvals arrive with the paid media tools.</p>';
+      $('panel').innerHTML = html;
+      wireChart();
+    });
+  }
   function table(title, cols, rows) {
     return '<div class="card"><div class="card-h"><h3>' + esc(title) + '</h3></div><div class="tw"><table><thead><tr>' + cols.map(function (c, i) { return '<th' + (i ? ' class="num"' : '') + '>' + c + '</th>'; }).join('') +
       '</tr></thead><tbody>' + rows.map(function (r) { return '<tr>' + r.map(function (c, i) { return '<td' + (i ? ' class="num"' : '') + '>' + c + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div></div>';
   }
-  function lineChart(weeks) {
+  function lineChart(weeks, opt) {
+    opt = opt || { unit: 'clicks', fmt: num };
     var W = 960, H = 260, L = 52, R = 16, T = 12, B = 30, vals = weeks.map(function (w) { return w.clicks; });
     var step = Math.max(1, Math.ceil(Math.max.apply(null, vals.concat([4])) / 4 / 10) * 10), mx = step * 4;
     var x = function (i) { return L + i * (W - L - R) / (vals.length - 1); }, y = function (v) { return T + (1 - v / mx) * (H - T - B); };
     var g = '', i;
-    for (i = 0; i <= 4; i++) g += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(step * i) + '" y2="' + y(step * i) + '"/><text x="' + (L - 8) + '" y="' + (y(step * i) + 4) + '" text-anchor="end">' + num(step * i) + '</text>';
+    for (i = 0; i <= 4; i++) g += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(step * i) + '" y2="' + y(step * i) + '"/><text x="' + (L - 8) + '" y="' + (y(step * i) + 4) + '" text-anchor="end">' + esc(opt.fmt(step * i)) + '</text>';
     for (i = 0; i < weeks.length; i += 3) g += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + esc(new Date(weeks[i].weekEnding + 'T12:00').toLocaleDateString([], { month: 'short', day: 'numeric' })) + '</text>';
     var pts = vals.map(function (v, i) { return x(i).toFixed(1) + ',' + y(v).toFixed(1); });
     var hits = vals.map(function (v, i) { var w = (W - L - R) / (vals.length - 1); return '<rect data-i="' + i + '" x="' + (x(i) - w / 2) + '" y="' + T + '" width="' + w + '" height="' + (H - T - B) + '" fill="transparent"/>'; }).join('');
-    return '<div class="chart-wrap" data-weeks="' + esc(JSON.stringify(weeks)) + '"><svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Clicks from Google by week, last 12 weeks">' + g +
+    return '<div class="chart-wrap" data-unit="' + esc(opt.unit) + '" data-weeks="' + esc(JSON.stringify(weeks)) + '"><svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + (opt.unit === 'spend' ? 'Ad spend' : 'Clicks from Google') + ' by week">' + g +
       '<path class="area" d="M' + x(0) + ',' + y(0) + ' L' + pts.join(' L') + ' L' + x(vals.length - 1) + ',' + y(0) + ' Z"/><polyline class="line" points="' + pts.join(' ') + '"/>' +
       '<circle class="dot" cx="' + x(vals.length - 1) + '" cy="' + y(vals[vals.length - 1]) + '" r="4.5"/><line class="cross" y1="' + T + '" y2="' + (H - B) + '" visibility="hidden"/>' + hits + '</svg><div class="tip" hidden></div></div>';
   }
@@ -351,7 +390,8 @@
           var i = +rect.dataset.i, p = svg.querySelector('.line').getAttribute('points').split(' ')[i].split(','), sx = svg.getBoundingClientRect().width / 960;
           cross.setAttribute('x1', p[0]); cross.setAttribute('x2', p[0]); cross.setAttribute('visibility', 'visible');
           tip.style.left = (p[0] * sx) + 'px'; tip.style.top = (p[1] * sx) + 'px';
-          tip.textContent = 'Week ending ' + new Date(weeks[i].weekEnding + 'T12:00').toLocaleDateString([], { month: 'short', day: 'numeric' }) + ': ' + num(weeks[i].clicks) + ' clicks'; tip.hidden = false;
+          var v = wrap.dataset.unit === 'spend' ? '$' + num(weeks[i].clicks) + ' spent' : num(weeks[i].clicks) + ' clicks';
+          tip.textContent = 'Week ending ' + new Date(weeks[i].weekEnding + 'T12:00').toLocaleDateString([], { month: 'short', day: 'numeric' }) + ': ' + v; tip.hidden = false;
         });
       });
       svg.addEventListener('mouseleave', function () { cross.setAttribute('visibility', 'hidden'); tip.hidden = true; });
