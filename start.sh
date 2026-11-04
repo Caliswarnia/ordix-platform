@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 export PGDATABASE="${PGDATABASE:-ordix}"
 DB="$PGDATABASE"
 psql -X -q -d postgres -c "DROP DATABASE IF EXISTS $DB WITH (FORCE);" -c "CREATE DATABASE $DB;"
-for f in 001_core.sql 002_sign_in.sql; do psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "db/$f"; done
+for f in 001_core.sql 002_sign_in.sql 003_connections.sql; do psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "db/$f"; done
 node src/admin.ts create-agency --name "Echelon Staffing Solutions" --slug echelon \
   --owner-email "${OWNER_EMAIL:-owner@example.com}" --owner-name "${OWNER_NAME:-Echelon Owner}"
 export SECRETS_KEY="${SECRETS_KEY:-$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")}"

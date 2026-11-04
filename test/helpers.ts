@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { DbConfig } from '../src/db.ts';
 
-export const MIGRATIONS = ['001_core.sql', '002_sign_in.sql'];
+export const MIGRATIONS = ['001_core.sql', '002_sign_in.sql', '003_connections.sql'];
 
 export function psql(c: DbConfig, sql: string): string {
   return execFileSync('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-h', c.host, '-p', String(c.port), '-U', c.user, '-d', c.database],

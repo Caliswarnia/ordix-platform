@@ -11,10 +11,18 @@
 //   POST /api/team/:id/active             { active }                                    team: edit
 //   POST /api/agency/branding             { name, brandColor, portalDomain }            branding: edit
 //   GET  /api/activity                    recent changes                                team: view
+//   GET  /api/clients/:id/connections     connected accounts for a client               accounts: view
+//   POST /api/clients/:id/connections/google   -> { url } to send the browser to Google   accounts: edit
+//   POST /api/connections/:id/disconnect                                                accounts: edit
+//   POST /api/properties/:id/select       which site/property feeds the dashboards      accounts: edit
+//   GET  /api/clients/:id/seo             Search Console and Analytics numbers          seo: view
+//   GET  /api/agency/oauth-app            whether the agency uses its own Google app    team: view
+//   POST /api/agency/oauth-app            { provider, clientId, clientSecret }           owner only
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { query, asMember, type DbConfig } from './db.ts';
 import { AuthError, issueTemporaryPassword, type SignedIn, type Workspace } from './auth.ts';
 import { addClient, addMember, setAccess, TEMPLATES, type Level, type Module } from './access.ts';
+import type { Connections } from './connections.ts';
 
 type Member = SignedIn & { workspace: Workspace };
 const LEVELS = ['none', 'view', 'edit', 'approve'];
@@ -33,7 +41,7 @@ export function dbMessage(e: unknown, fallback: string): string {
   return msg;
 }
 
-export function createApi(o: { db: DbConfig }) {
+export function createApi(o: { db: DbConfig; connections: Connections }) {
   const as = <T>(m: Member, sql: string, vars: Record<string, string> = {}) => asMember<T>(o.db, m.workspace.membershipId, m.email, sql, vars);
   const access = (m: Member) => as<Record<Module, Level>>(m, `SELECT json_object_agg(module, level) FROM v_my_access;`);
   const need = (m: Member, mod: Module, lvl: Level) => {
@@ -150,6 +158,33 @@ export function createApi(o: { db: DbConfig }) {
           CASE WHEN action = 'update' THEN (SELECT json_agg(k) FROM jsonb_object_keys(after) k WHERE after -> k IS DISTINCT FROM before -> k) END AS changed,
           after ->> 'module' AS module, after ->> 'level' AS level
         FROM audit_log ORDER BY id DESC LIMIT 100) r;`);
+    }
+
+    // Connected accounts
+    if (parts[1] === 'clients' && UUID.test(parts[2] ?? '')) {
+      const clientId = parts[2];
+      if (method === 'GET' && parts[3] === 'connections' && parts.length === 4) { need(m, 'accounts', 'view'); return o.connections.list(m, clientId); }
+      if (method === 'POST' && parts[3] === 'connections' && parts[4] === 'google' && parts.length === 5) return { url: o.connections.startGoogle(m, clientId) };
+      if (method === 'GET' && parts[3] === 'seo' && parts.length === 4) return o.connections.seo(m, clientId);
+    }
+    if (method === 'POST' && parts[1] === 'connections' && UUID.test(parts[2] ?? '') && parts[3] === 'disconnect' && parts.length === 4) {
+      await o.connections.disconnect(m, parts[2]); return { ok: true };
+    }
+    if (method === 'POST' && parts[1] === 'properties' && UUID.test(parts[2] ?? '') && parts[3] === 'select' && parts.length === 4) {
+      o.connections.selectProperty(m, parts[2]); return { ok: true };
+    }
+    if (path === '/api/agency/oauth-app') {
+      if (method === 'GET') {
+        need(m, 'team', 'view');
+        return as(m, `SELECT coalesce(json_agg(json_build_object('provider', provider, 'clientId', app_client_id, 'since', created_at)), '[]') FROM oauth_apps;`);
+      }
+      if (method === 'POST') {
+        const b = await body(req);
+        const provider = str(b, 'provider');
+        if (provider !== 'google' && provider !== 'meta') throw new AuthError(400, 'Choose Google or Meta');
+        o.connections.saveAgencyApp(m, provider, str(b, 'clientId', 300), str(b, 'clientSecret', 500));
+        return { ok: true };
+      }
     }
 
     throw new AuthError(404, 'Not found');

@@ -126,6 +126,12 @@
       setBrand(S.agency.brandColor);
       document.title = S.agency.name;
       if (S.workspace.clientId) { route.page = 'client'; route.client = S.workspace.clientId; }
+      var back = new URLSearchParams(location.search);
+      if (back.get('connected') && back.get('client')) {
+        route = { page: 'client', client: back.get('client'), tab: 'accounts' };
+        history.replaceState(null, '', '/');
+        setTimeout(function () { toast('Google connected. Choose the site and property for this client\u2019s dashboards.'); }, 200);
+      }
       render();
     });
   }
@@ -232,11 +238,124 @@
     var b = bodies[route.tab] || ['', ''];
     return '<div class="page-head"><div><h1>' + esc(c.name) + '</h1><p class="mono">' + esc(c.domain || 'No website set') + ' · ' + esc(cmsLabel(c.cms)) + '</p></div></div>' +
       (tabs.length ? '<div class="tabs" role="tablist">' + tabs.map(function (t) { return '<button class="tab" role="tab" data-tab="' + t[0] + '" aria-selected="' + (route.tab === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div>' +
-        '<div class="card"><div class="empty"><b>' + esc(b[0]) + '</b><span>' + esc(b[1]) + '</span><span class="pill p-warn">Waiting for connected accounts</span></div></div>'
+        (route.tab === 'seo' || route.tab === 'accounts' ? '<div id="panel"><div class="card"><div class="empty"><span>Loading\u2026</span></div></div></div>'
+          : '<div class="card"><div class="empty"><b>' + esc(b[0]) + '</b><span>' + esc(b[1]) + '</span><span class="pill p-warn">Waiting for connected accounts</span></div></div>')
         : '<div class="card"><div class="empty"><b>No areas available</b><span>Ask your agency for access.</span></div></div>');
   }
   function wireClient() {
     root.querySelectorAll('[data-tab]').forEach(function (b) { b.addEventListener('click', function () { route.tab = b.dataset.tab; render(); }); });
+    if (route.tab === 'accounts') loadAccounts();
+    if (route.tab === 'seo') loadSeo();
+  }
+
+  // Connected accounts tab
+  var KIND = { search_console_site: 'Search Console site', ga4_property: 'Analytics property', meta_ad_account: 'Meta ad account', meta_page: 'Facebook page' };
+  function connectGoogle() {
+    api('POST', '/api/clients/' + route.client + '/connections/google', {}).then(function (r) {
+      if (r.status !== 200) return toast(r.data.error);
+      location.assign(r.data.url);
+    });
+  }
+  function loadAccounts() {
+    var clientId = route.client;
+    api('GET', '/api/clients/' + clientId + '/connections').then(function (r) {
+      if (!$('panel') || route.client !== clientId) return;
+      var edit = can('accounts', 'edit');
+      var list = r.status === 200 ? r.data : [];
+      var head = '<div class="notice"><b>Connect this client\u2019s accounts</b><span class="muted">The account owner signs in to Google directly; no passwords are shared. Ordix only reads data (it never changes anything in Google).</span>' +
+        (edit ? '<div><button class="btn btn-p" id="cg">Connect Google</button></div>' : '<span class="muted small">Ask someone with edit access to Connected accounts to connect them.</span>') + '</div>';
+      var cards = list.map(function (c) {
+        var st = c.status === 'connected' ? '<span class="pill p-good">Connected</span>' : '<span class="pill p-warn">Sign-in expired</span>';
+        var groups = {};
+        c.properties.forEach(function (p) { (groups[p.kind] = groups[p.kind] || []).push(p); });
+        var props = Object.keys(groups).map(function (k) {
+          return '<div class="field"><span class="small"><b>' + esc(KIND[k] || k) + '</b> <span class="muted">(feeds the dashboards)</span></span>' + groups[k].map(function (p) {
+            return '<label class="row small"><input type="radio" name="' + esc(c.id + k) + '" data-prop="' + esc(p.id) + '"' + (p.selected ? ' checked' : '') + (edit ? '' : ' disabled') + '> ' + esc(p.label) + '</label>';
+          }).join('') + '</div>';
+        }).join('') || '<p class="muted small">This Google account has no Search Console sites or Analytics properties. Connect the account that manages them.</p>';
+        return '<div class="card"><div class="card-h"><h3>Google' + (c.account ? ' \u00b7 ' + esc(c.account) : '') + '</h3><div class="row">' + st +
+          (edit && c.status !== 'connected' ? '<button class="btn btn-s btn-p" data-reconnect>Reconnect</button>' : '') +
+          (edit ? '<button class="btn btn-s" data-disc="' + esc(c.id) + '">Disconnect</button>' : '') + '</div></div><div class="card-b">' + props +
+          '<p class="muted small">Connected by ' + esc(c.connectedBy) + ' \u00b7 ' + esc(when(c.connectedAt)) + (c.agencyApp ? ' \u00b7 using your agency\u2019s own Google app' : '') + '</p></div></div>';
+      }).join('');
+      $('panel').innerHTML = head + cards;
+      if ($('cg')) $('cg').addEventListener('click', connectGoogle);
+      root.querySelectorAll('[data-reconnect]').forEach(function (b) { b.addEventListener('click', connectGoogle); });
+      root.querySelectorAll('[data-prop]').forEach(function (i) {
+        i.addEventListener('change', function () { api('POST', '/api/properties/' + i.dataset.prop + '/select', {}).then(function (r) { toast(r.status === 200 ? 'Dashboards will use this one' : r.data.error); }); });
+      });
+      root.querySelectorAll('[data-disc]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Confirm disconnect'; b.classList.add('btn-p'); return; }
+          api('POST', '/api/connections/' + b.dataset.disc + '/disconnect', {}).then(function (r) { toast(r.status === 200 ? 'Disconnected. Ordix\u2019s access was removed.' : r.data.error); loadAccounts(); });
+        });
+      });
+    });
+  }
+
+  // SEO tab
+  function num(n) { return Math.round(n).toLocaleString(); }
+  function loadSeo() {
+    var clientId = route.client;
+    api('GET', '/api/clients/' + clientId + '/seo').then(function (r) {
+      if (!$('panel') || route.client !== clientId) return;
+      var d = r.data || {};
+      if (r.status !== 200) { $('panel').innerHTML = '<div class="card"><div class="empty"><b>' + esc(d.error) + '</b></div></div>'; return; }
+      if (!d.connected) {
+        $('panel').innerHTML = '<div class="card"><div class="empty"><b>Search rankings and traffic</b><span>Connect Google Search Console and Analytics to see clicks, rankings and leads.</span>' +
+          (can('accounts', 'view') ? '<button class="btn btn-p" data-tab-go="accounts">Go to Connected accounts</button>' : '') + '</div></div>';
+        var g = root.querySelector('[data-tab-go]'); if (g) g.addEventListener('click', function () { route.tab = 'accounts'; render(); });
+        return;
+      }
+      if (d.error) { $('panel').innerHTML = '<div class="card"><div class="empty"><b>' + esc(d.error) + '</b>' + (d.reconnect ? '<span>Reconnect the Google account in Connected accounts.</span>' : '') + '</div></div>'; return; }
+      var t = d.totals, a = d.analytics, html = '<div class="tiles">';
+      if (t) {
+        var ch = t.clicksPrev ? Math.round((t.clicks - t.clicksPrev) / t.clicksPrev * 100) : null;
+        html += '<div class="card tile"><span class="k">Clicks from Google, last 28 days</span><span class="v">' + num(t.clicks) + '</span><span class="small ' + (ch === null ? 'muted' : ch >= 0 ? 'up' : 'down') + '">' +
+          (ch === null ? 'No earlier period yet' : (ch >= 0 ? '\u25b2 ' : '\u25bc ') + Math.abs(ch) + '% vs prior 28 days') + '</span></div>' +
+          '<div class="card tile"><span class="k">Times shown in Google</span><span class="v">' + num(t.impressions) + '</span><span class="small muted">impressions, last 28 days</span></div>' +
+          '<div class="card tile"><span class="k">Average position</span><span class="v">' + (t.position ? t.position.toFixed(1) : '\u2014') + '</span><span class="small muted">lower is better</span></div>';
+      }
+      if (a) html += '<div class="card tile"><span class="k">Website sessions, last 28 days</span><span class="v">' + num(a.sessions) + '</span><span class="small muted">' + num(a.keyEvents) + ' key events (leads, calls, forms)</span></div>';
+      html += '</div>';
+      if (d.weeks) html += '<div class="card"><div class="card-h"><h3>Clicks from Google by week</h3><span class="muted small">' + esc(d.site) + ' \u00b7 through ' + esc(new Date(d.through + 'T12:00').toLocaleDateString([], { month: 'short', day: 'numeric' })) + '</span></div><div class="card-b">' + lineChart(d.weeks) + '</div></div>';
+      if (d.queries && d.queries.length) html += table('Top searches, last 28 days', ['Search', 'Clicks', 'Shown', 'Position'], d.queries.map(function (x) { return [esc(x.query), num(x.clicks), num(x.impressions), x.position.toFixed(1)]; }));
+      if (d.pages && d.pages.length) html += table('Top pages, last 28 days', ['Page', 'Clicks', 'Shown', 'Position'], d.pages.map(function (x) { return ['<span class="mono small">' + esc(x.page.replace(/^https?:\/\/[^/]+/, '') || '/') + '</span>', num(x.clicks), num(x.impressions), x.position.toFixed(1)]; }));
+      if (a && !d.weeks) html += '<p class="muted small">Pick a Search Console site in Connected accounts to see searches and rankings.</p>';
+      $('panel').innerHTML = html;
+      wireChart();
+    });
+  }
+  function table(title, cols, rows) {
+    return '<div class="card"><div class="card-h"><h3>' + esc(title) + '</h3></div><div class="tw"><table><thead><tr>' + cols.map(function (c, i) { return '<th' + (i ? ' class="num"' : '') + '>' + c + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + rows.map(function (r) { return '<tr>' + r.map(function (c, i) { return '<td' + (i ? ' class="num"' : '') + '>' + c + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div></div>';
+  }
+  function lineChart(weeks) {
+    var W = 960, H = 260, L = 52, R = 16, T = 12, B = 30, vals = weeks.map(function (w) { return w.clicks; });
+    var step = Math.max(1, Math.ceil(Math.max.apply(null, vals.concat([4])) / 4 / 10) * 10), mx = step * 4;
+    var x = function (i) { return L + i * (W - L - R) / (vals.length - 1); }, y = function (v) { return T + (1 - v / mx) * (H - T - B); };
+    var g = '', i;
+    for (i = 0; i <= 4; i++) g += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(step * i) + '" y2="' + y(step * i) + '"/><text x="' + (L - 8) + '" y="' + (y(step * i) + 4) + '" text-anchor="end">' + num(step * i) + '</text>';
+    for (i = 0; i < weeks.length; i += 3) g += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + esc(new Date(weeks[i].weekEnding + 'T12:00').toLocaleDateString([], { month: 'short', day: 'numeric' })) + '</text>';
+    var pts = vals.map(function (v, i) { return x(i).toFixed(1) + ',' + y(v).toFixed(1); });
+    var hits = vals.map(function (v, i) { var w = (W - L - R) / (vals.length - 1); return '<rect data-i="' + i + '" x="' + (x(i) - w / 2) + '" y="' + T + '" width="' + w + '" height="' + (H - T - B) + '" fill="transparent"/>'; }).join('');
+    return '<div class="chart-wrap" data-weeks="' + esc(JSON.stringify(weeks)) + '"><svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Clicks from Google by week, last 12 weeks">' + g +
+      '<path class="area" d="M' + x(0) + ',' + y(0) + ' L' + pts.join(' L') + ' L' + x(vals.length - 1) + ',' + y(0) + ' Z"/><polyline class="line" points="' + pts.join(' ') + '"/>' +
+      '<circle class="dot" cx="' + x(vals.length - 1) + '" cy="' + y(vals[vals.length - 1]) + '" r="4.5"/><line class="cross" y1="' + T + '" y2="' + (H - B) + '" visibility="hidden"/>' + hits + '</svg><div class="tip" hidden></div></div>';
+  }
+  function wireChart() {
+    root.querySelectorAll('.chart-wrap').forEach(function (wrap) {
+      var weeks = JSON.parse(wrap.dataset.weeks), svg = wrap.querySelector('svg'), tip = wrap.querySelector('.tip'), cross = svg.querySelector('.cross');
+      svg.querySelectorAll('rect[data-i]').forEach(function (rect) {
+        rect.addEventListener('mouseenter', function () {
+          var i = +rect.dataset.i, p = svg.querySelector('.line').getAttribute('points').split(' ')[i].split(','), sx = svg.getBoundingClientRect().width / 960;
+          cross.setAttribute('x1', p[0]); cross.setAttribute('x2', p[0]); cross.setAttribute('visibility', 'visible');
+          tip.style.left = (p[0] * sx) + 'px'; tip.style.top = (p[1] * sx) + 'px';
+          tip.textContent = 'Week ending ' + new Date(weeks[i].weekEnding + 'T12:00').toLocaleDateString([], { month: 'short', day: 'numeric' }) + ': ' + num(weeks[i].clicks) + ' clicks'; tip.hidden = false;
+        });
+      });
+      svg.addEventListener('mouseleave', function () { cross.setAttribute('visibility', 'hidden'); tip.hidden = true; });
+    });
   }
 
   // Team

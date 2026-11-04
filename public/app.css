@@ -77,8 +77,8 @@ select.inline { min-height: 32px; padding: 4px 8px; width: auto; font-size: 13px
 .card-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .card-h h3 { font-size: 17px; }
 .card-b { padding: 18px; display: grid; gap: 14px; }
-.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 760px) { .tiles { grid-template-columns: minmax(0, 1fr); } }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+
 .tile { padding: 16px 18px; display: grid; gap: 4px; }
 .tile .k { font-size: 13px; color: var(--muted); }
 .tile .v { font: 600 28px/1.1 var(--display); font-variant-numeric: tabular-nums; }
@@ -104,3 +104,19 @@ tr:last-child td { border-bottom: 0; }
 .log li:last-child { border-bottom: 0; }
 @media (max-width: 560px) { .log li { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--surface); padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 50; max-width: calc(100% - 32px); }
+
+/* Charts (text and lines use theme tokens; the series uses the agency's brand color) */
+.chart-wrap { position: relative; }
+.chart { width: 100%; height: auto; display: block; }
+.chart text { fill: var(--muted); font: 11px var(--mono); }
+.chart .grid { stroke: var(--surface-2); }
+.chart .line { stroke: var(--accent); stroke-width: 2; fill: none; }
+.chart .area { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+.chart .dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.chart .cross { stroke: var(--muted); stroke-dasharray: 3 3; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--surface); font-size: 12px; padding: 6px 9px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -115%); }
+.up { color: var(--good); } .down { color: var(--bad); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.field input[type=radio] { width: auto; min-height: 0; margin: 0; accent-color: var(--accent); }
+label.row { gap: 8px; padding: 4px 0; cursor: pointer; }
+#panel { display: grid; gap: 20px; }

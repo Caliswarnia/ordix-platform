@@ -8,5 +8,6 @@ White-label marketing software for agencies. See CLAUDE.md for stack, commands a
 - `src/auth.ts`: sign-in routes (`/auth/*`), temporary passwords
 - `src/api.ts`, `src/server.ts`: JSON API and web server; `public/`: the browser app
 - `src/admin.ts`: Ordix staff command line; `start.sh`: local setup
+- `db/003_connections.sql`, `src/connections.ts`, `src/google.ts`: connected accounts and the Google connector
 - `src/secrets.ts`: secret store (local encrypted file now, AWS Secrets Manager later)
 - `test/`: run with `npm test`

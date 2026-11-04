@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 export interface SecretStore {
   put(value: string): string;          // returns a reference
   get(ref: string): string;
+  delete(ref: string): void;           // removing an unknown reference is not an error
 }
 
 export class LocalEncryptedStore implements SecretStore {
@@ -32,6 +33,12 @@ export class LocalEncryptedStore implements SecretStore {
     all[ref] = blob;
     writeFileSync(this.file, JSON.stringify(all), { mode: 0o600 });
     return ref;
+  }
+  delete(ref: string): void {
+    const all = this.load();
+    if (!(ref in all)) return;
+    delete all[ref];
+    writeFileSync(this.file, JSON.stringify(all), { mode: 0o600 });
   }
   get(ref: string): string {
     const blob = this.load()[ref];
