@@ -9,7 +9,8 @@ Same conventions as the Health Company Platform: TypeScript on Node 22.18+ (nati
 - `npm test` with `PGHOST`/`PGPORT`/`PGUSER` set: runs every test against throwaway databases
 - `bash start.sh` (OWNER_EMAIL, OWNER_NAME): fresh local database with Echelon as the first agency, then the app at http://127.0.0.1:8800; prints the owner's one-time temporary password
 - `node src/admin.ts create-agency | reset | suspend | reactivate`: Ordix staff tasks
-- Migrations are ordered SQL files in `db/`; add new ones to `MIGRATIONS` in `test/helpers.ts`, the list in `start.sh` and `db:init` in package.json
+- Migrations are ordered SQL files in `db/`; add new ones to `MIGRATIONS` in `test/helpers.ts`, the list in `start.sh` and `db:init` in package.json. Deployed servers apply them with `node src/migrate.ts` (tracked in `schema_migrations`, runs on app start)
+- Deploy (`deploy/`): Docker Compose with the app, PostgreSQL 16 and Caddy (HTTPS); `deploy/setup.sh` once on the server, `deploy/update.sh` after each push. Secrets are typed on the server into `deploy/.env` (never committed). `TRUST_PROXY=1` reads the client IP from Caddy's X-Forwarded-For
 
 ## Rules that must not regress
 - Tenant isolation lives in the database: requests run as `ordix_member` with row-level security, so an agency sees only its own rows and client-level people only their own client. New tables with agency data need `agency_id` and a policy in the same pattern.

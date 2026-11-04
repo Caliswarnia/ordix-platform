@@ -98,7 +98,12 @@ const cookieToken = (req: IncomingMessage) => {
   const m = String(req.headers.cookie ?? '').match(new RegExp(`(?:^|;\\s*)${COOKIE}=([A-Za-z0-9_-]+)`));
   return m ? m[1] : '';
 };
-const ipOf = (req: IncomingMessage) => String(req.socket.remoteAddress ?? '').replace(/^::ffff:/, '');
+// Behind the deploy's Caddy proxy (TRUST_PROXY=1) the client address is the last X-Forwarded-For entry,
+// which Caddy sets itself; otherwise the header is ignored so it can't be spoofed.
+const ipOf = (req: IncomingMessage) => {
+  const fwd = process.env.TRUST_PROXY === '1' ? String(req.headers['x-forwarded-for'] ?? '').split(',').pop()!.trim() : '';
+  return (fwd || String(req.socket.remoteAddress ?? '')).replace(/^::ffff:/, '');
+};
 const uaOf = (req: IncomingMessage) => String(req.headers['user-agent'] ?? '').slice(0, 400);
 const dbError = (e: unknown, fallback: string) => {
   const m = String((e as { stderr?: string }).stderr ?? '').match(/ERROR:\s+(.*)/);

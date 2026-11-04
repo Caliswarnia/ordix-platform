@@ -11,6 +11,7 @@
     "test": "node --test test/*.test.ts",
     "db:init": "psql -v ON_ERROR_STOP=1 -f db/001_core.sql -f db/002_sign_in.sql -f db/003_connections.sql -f db/004_meta.sql",
     "start": "bash start.sh",
-    "admin": "node src/admin.ts"
+    "admin": "node src/admin.ts",
+    "migrate": "node src/migrate.ts"
   }
 }

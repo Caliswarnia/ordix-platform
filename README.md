@@ -11,3 +11,6 @@ White-label marketing software for agencies. See CLAUDE.md for stack, commands a
 - `db/003_connections.sql`, `src/connections.ts`, `src/google.ts`: connected accounts and the Google connector; `db/004_meta.sql`, `src/meta.ts`: the Meta connector
 - `src/secrets.ts`: secret store (local encrypted file now, AWS Secrets Manager later)
 - `test/`: run with `npm test`
+
+## Deploying
+See `deploy/README.md`: one server with the app, PostgreSQL and automatic HTTPS; `bash deploy/setup.sh` once, `bash deploy/update.sh` after each push.
